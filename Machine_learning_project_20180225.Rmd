@@ -1,0 +1,137 @@
+---
+title: "Machine Learning Prediction Project"
+author: "Lisa Anderson"
+date: "February 23, 2018"
+output: html_document
+---
+
+##Introduction   
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively.   
+These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health,   
+to find patterns in their behavior, or because they are tech geeks.   
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+The goal of this project is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the way in which they performed (the "classe").
+They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.   
+   
+More information is available at <http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).   
+   
+
+##Cleaning and Preparing Data   
+```{r}
+library(caret)
+set.seed(123)
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"   
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"   
+training <- read.csv(url(trainUrl), na.strings=c("NA","#DIV/0!",""))   
+testing <- read.csv(url(testUrl), na.strings=c("NA","#DIV/0!",""))   
+```  
+   
+Look at summary of the data. There are 160 variables, so we will need to narrow down this list by choosing predicators.   
+```{r}
+str(training)   
+```     
+Split training data further into training and test sets to save the original test data as a validation set.   
+```{r}   
+inTrain <- createDataPartition(training$classe, p=0.7, list=FALSE)  
+train1<- training[inTrain, ]   
+train.test <- training[-inTrain, ]   
+```      
+   
+Remove Near Zero Variance variables because there are non-informative.   
+This reduces the number of variables to 128 from 160 in the training data.   
+```{r}    
+nzvCol <- nearZeroVar(train1)   
+train1 <- train1[,-nzvCol]   
+train.test <- train.test[,-nzvCol]   
+```   
+   
+There are still many columns that contain mostly NAs. We now delete columns of the training set that contain over 95% NAs    
+and remove the same column names from the test data.   
+This has further reduced the number of variables to 59.   ##Building the Model      
+
+```{r}      
+train1 <- train1[, colSums(is.na(train1))/(nrow(train1)) <=.95]   
+train.test <-train.test[, colnames(train1)]   
+```   
+   
+Lastly, we need to remove the columns that shouldn't be used as predictors (X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp).   
+The names of the subjects and the timestamps would not be useful variables for the prediction model. This reduces the number of columns to 54.   
+```{r} 
+train1 <- train1[, -(1:5)]   
+train.test <- train.test[, -(1:5)]   
+```   
+   
+    
+I selected random forest model and then fit this model on the train1 data.   
+Controlling the tuning parameters by choosing a 3-fold cross validation method (method="cv" , number=3) will reduce the runtime of the model.   
+If you don't choose parameters, the model may take too long to run.   
+   
+```{r} 
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)   
+modfit <- train(classe ~ ., data=train1, method="rf",trControl=fitControl)   
+```   
+Viewing the final model tells you how many trees were used and the amount of variables at each split.   
+```{r}
+modfit$finalModel   
+```   
+   
+## Evaluating Model Accuracy   
+     
+I used the model to predict the classe in the train.test data set.   
+```{r}
+pred1 <- predict(modfit, newdata=train.test)   
+```    
+   
+The confusion matrix shows predictions vs the actuals for the classe column and has determined the accuracy of the model to be 99.78%.      
+```{r}
+confusionMatrix(train.test$classe, pred1)   
+```     
+Since this model produced results with 99.78% accuracy, I will not be trying any other models.   
+The predicted out of sample error rate is .22%.   
+   
+## Use Selected Model to Predict on Test Set      
+   
+Now that the model has been chosen and tested, we will go back to the original training set, clean up the data,   
+and fit the model as we did in the above steps with the further split training sets.   
+   
+Remove near zero variance variables.   
+```{r}
+nzvCol <- nearZeroVar(training)   
+training <- training[,-nzvCol]   
+testing <- testing[,-nzvCol]   
+```   
+   
+Remove columns that are mostly NAs.   
+In order to match the columns in testing set to training set, I created created a set of the training data without the classe column (column 59).   
+Then I removed the columns from testing that did not match.   
+```{r}
+training <- training[, colSums(is.na(training))/(nrow(training)) <=.95]   
+training.noclasse <- training[,-59]   
+testing <- testing[,colnames(training.noclasse)]   
+```   
+    
+Remove first 5 columns because they are not necessary.   
+```{r}
+training <- training[, -(1:5)]   
+testing <- testing[, -(1:5)]   
+```   
+   
+Fit the model to the original training data.   
+```{r}
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)   
+modfit1 <- train(classe ~ ., data=training, method="rf", trControl=fitControl)   
+```   
+   
+##Predict on Test Set   
+   
+Predict the classe column for the testing dataset and print the results.   
+```{r}
+pred2 <- predict(modfit1, newdata=testing)   
+pred2   
+```     
+  
+##Conculusion   
+   
+Above are the predictionsfor the classe column in the testing data set using the random forest model that I built,   
+which was trained on the training data set.   
+
